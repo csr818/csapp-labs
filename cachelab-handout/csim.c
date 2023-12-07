@@ -37,50 +37,40 @@ cache_line** create_cache() {
     return cache;
 }
 
-void test_print_cache(int** cache) {
-    for (int i = 0; i < (1 << s); i++) {
-        for (int j = 0; j < E; j++) {
-            printf("%d ", cache[i][j]);
-        }
-        puts("");
-    }
-}
 
-bool valid(unsigned int info) {
-    return (info >> (b + 1) & 1) != 0;
+int valid(unsigned int info) {
+    return (info >> (addrlen-s-b + 1)) & 1;
 }
 
 void do_command(cache_line** cache,char type, unsigned int address, int size) {
     unsigned int tag = address >> (b + s); // >> 优先级高
     int S_idx = (address >> b) & ((-1U) >> (addrlen - s));
+    int taglen = addrlen - s - b;
+
     // 当前组内所有的行都不包含这个值而且行满了
 
     unsigned int cache_date;
     // 找是否存在cache中
     for (int i = 0; i < E; i++) {
         cache_date = cache[S_idx][i].line_info;
-        if ((cache_date & ((1 << b) - 1)) == tag && valid(cache_date)) {
+        printf("idx: %d\n", S_idx);
+        printf("line_info: %d\n", cache_date & ((1 << taglen) - 1));
+        printf("tag: %d\n", tag);
+        printf("valid: %d\n", valid(cache_date));
+        if ((cache_date & ((1 << taglen) - 1)) == tag && valid(cache_date)!=0) {
             ++hit_times;
             cache[S_idx][i].timestamp = 0;
             return ;
-        } else {
-            if (valid(cache_date)) cache[S_idx][i].timestamp += 1;
-        }
+        } 
     } 
 
     // 不在cache中，检查cache中是否存在空行
     for (int i = 0; i < E; i++) {
         cache_date = cache[S_idx][i].line_info;
-        if (((cache_date >> (b + 1)) & 1) == 0) {
-            switch (type) {
-                case 'L':
-                    ++miss_times;
-                    break;
-                default:
-                    ++miss_times, ++hit_times;
-                    break;
-            }
-            cache[S_idx][i].line_info = tag | (1 << (addrlen - b - s)); // 设置cache中的值为有效位为1，tag是当前地址的tag
+        if (valid(cache_date) == 0) {
+            ++miss_times;
+            cache[S_idx][i].line_info = tag | (1 << taglen); // 设置cache中的值为有效位为1，tag是当前地址的tag
+            cache[S_idx][i].timestamp = 0;
             return ;
         }
     }
@@ -93,18 +83,26 @@ void do_command(cache_line** cache,char type, unsigned int address, int size) {
             max_idx = i, max_stamp = cache[S_idx][i].timestamp;
     }
     ++miss_times, ++eviction_times;
-    if (type == 'M' || type == 'S') 
-        ++hit_times;
     cache[S_idx][max_idx].timestamp = 0;
-    cache[S_idx][max_idx].line_info = tag | (1 << (addrlen - b - s));
+    cache[S_idx][max_idx].line_info = tag | (1 << taglen);
+}
+
+void update_timestamp(cache_line** cache) {
+    int S = 1 << s;
+    for (int i = 0; i < S; i++) {
+        for (int j = 0; j < E; j++) {
+            if (valid(cache[i][j].line_info)) cache[i][j].timestamp += 1;
+        }
+    }
 }
 
 void start_simulate(cache_line** cache, FILE* f) {
     char type;
     unsigned int address; // 地址应该是无符号数
     int size;
-    while (3 == fscanf(f, " %c %x %d", &type, &address, &size)) {
+    while (3 == fscanf(f, " %c %x,%d", &type, &address, &size)) {
         do_command(cache, type, address, size);
+        update_timestamp(cache);
     }
 }
 
