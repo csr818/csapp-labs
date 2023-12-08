@@ -17,7 +17,7 @@ static int hit_times, miss_times, eviction_times;
 
 typedef struct {
     int timestamp; // 多久没被访问
-    unsigned int line_info;
+    unsigned int line_info; // 低addrlen - s - b位记录的是tag 更高一位是valid位
 } cache_line;
 
 
@@ -39,24 +39,19 @@ cache_line** create_cache() {
 
 
 int valid(unsigned int info) {
-    return (info >> (addrlen-s-b + 1)) & 1;
+    return (info >> (addrlen-s-b)) & 1;
 }
 
 void do_command(cache_line** cache,char type, unsigned int address, int size) {
     unsigned int tag = address >> (b + s); // >> 优先级高
-    int S_idx = (address >> b) & ((-1U) >> (addrlen - s));
+    int S_idx = (address >> b) & ((1 << s) - 1); // 也可以写成这样(address >> b) & ((-1U) >> (addrlen - s));
     int taglen = addrlen - s - b;
-
     // 当前组内所有的行都不包含这个值而且行满了
 
     unsigned int cache_date;
     // 找是否存在cache中
     for (int i = 0; i < E; i++) {
         cache_date = cache[S_idx][i].line_info;
-        printf("idx: %d\n", S_idx);
-        printf("line_info: %d\n", cache_date & ((1 << taglen) - 1));
-        printf("tag: %d\n", tag);
-        printf("valid: %d\n", valid(cache_date));
         if ((cache_date & ((1 << taglen) - 1)) == tag && valid(cache_date)!=0) {
             ++hit_times;
             cache[S_idx][i].timestamp = 0;
@@ -101,7 +96,16 @@ void start_simulate(cache_line** cache, FILE* f) {
     unsigned int address; // 地址应该是无符号数
     int size;
     while (3 == fscanf(f, " %c %x,%d", &type, &address, &size)) {
-        do_command(cache, type, address, size);
+        switch (type) {
+            case 'L':
+                do_command(cache, type, address, size);
+                break;
+            case 'M':
+                do_command(cache, type, address, size);
+            case 'S':
+                do_command(cache, type, address, size);
+                break;
+        }
         update_timestamp(cache);
     }
 }
